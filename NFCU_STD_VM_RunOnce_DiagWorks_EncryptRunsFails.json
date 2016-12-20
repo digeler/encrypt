@@ -1,0 +1,310 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "updateVmUrl": {
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/201-encrypt-running-windows-vm/updatevm-kek.json",
+      "metadata": {
+        "description": "URL for VM creation encryption"
+      }
+    },
+    "storageAccountResourceGroup": {
+      "type": "string",
+      "defaultValue": "sql1",
+      "metadata": {
+        "description": "ResourceGroup"
+      }
+    },
+    "vmAdminUserName": {
+      "type": "securestring",
+      "defaultValue": "dinor",
+      "metadata": {
+        "description": "Local admin account user name"
+      }
+    },
+    "vmAdminPassword": {
+      "type": "securestring",
+      "defaultValue": "Corp123!!!!!",
+      "metadata": {
+        "description": "Local admin account password"
+      }
+    },
+    "resourceLocation": {
+      "type": "string",
+      "defaultValue": "north europe",
+      "metadata": {
+        "description": "Location of resource (East US or West US)"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_A5",
+      "metadata": {
+        "description": "App Tier VM Size"
+      }
+    },
+    "envLevel": {
+      "type": "string",
+      "defaultValue": "test",
+      "metadata": {
+        "description": "Single letter designator for environment level (dev = D, test = , prod = R)"
+      }
+    },
+    "vmRole": {
+      "type": "string",
+      "defaultValue": "web",
+      "metadata": {
+        "description": "Virtual machine role (web, app, data)"
+      }
+    },
+    "vmName": {
+      "type": "string",
+      "defaultValue": "dinchenc",
+      "metadata": {
+        "description": "Virtual machine name"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "favad",
+      "metadata": {
+        "description": "Storage account name"
+      }
+    },
+    "ipAddress": {
+      "type": "string",
+      "metadata": {
+        "description": "IP address of virtual machine"
+      }
+    },
+    "numDataDisk": {
+      "type": "int",
+      "metadata": {
+        "description": "Number of data disks"
+      }
+    },
+    "aadClientSecret": {
+      "type": "securestring",
+      "defaultValue": "****",
+      "metadata": {
+        "description": "Client Secret of AAD app which has permissions to KeyVault"
+      }
+    },
+      "pubipDnsName": {
+          "type": "string",
+          "minLength": 1
+      }
+  },
+  "variables": {
+
+   
+    
+    "customImage": "image-osDisk.0303109f-df61-4e1f-a57c-b289b90e1dbb.vhd",
+    "vnetResourceGroup": {
+      "DEV": "sql1",
+      "UAT": "sql1",
+      "PROD": "sql1"
+    },
+    "vnetName": {
+      "DEV": "dinscalezvnet,",
+      "UAT": "dinscalezvnet",
+      "PROD": "dinscalezvnet"
+    },
+    "envRoleID": "[concat(toUpper(parameters('envLevel')), toUpper(parameters('vmRole')))]",
+    "subnetName": {
+      "DEVAPP": "dinscalezsubnet",
+      "DEVDATA": "dinscalezsubnet",
+      "DEVWEB": "dinscalezsubnet",
+      "UATAPP": "dinscalezsubnet",
+      "UATDATA": "dinscalezsubnet",
+      "UATWEB": "dinscalezsubnet",
+      "PRODAPP": "dinscalezsubnet",
+      "PRODDATA": "dinscalezsubnet",
+      "PRODWEB": "dinscalezsubnet"
+    },
+    "vnetId": "/subscriptions/928f4e7e-2c28-4063-a56e-6f1e6f2bb73c/resourceGroups/sql1/providers/Microsoft.Network/virtualNetworks/dinscalezvnet",
+    "subnetRef": "/subscriptions/928f4e7e-2c28-4063-a56e-6f1e6f2bb73c/resourceGroups/sql1/providers/Microsoft.Network/virtualNetworks/dinscalezvnet/subnets/dinscalezsubnet",
+    "diskArray": [
+      {
+        "name": "datadisk1",
+        "lun": 0,
+        "vhd": {
+          "uri": "[concat('http://', parameters('storageAccountName'),'.blob.core.windows.net/vhds-data/', parameters('vmName'), '-d-dre.vhd')]"
+        },
+        "createOption": "Empty",
+        "caching": "ReadWrite",
+        "diskSizeGB": 127
+      }
+
+    ],
+    
+    "extensionName": "AzureDiskEncryption",
+    "extensionVersion": "1.1",
+    "encryptionOperation": "EnableEncryption",
+    "keyEncryptionAlgorithm": "RSA-OAEP",
+    "keyVaultURL": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]",
+    "keyVaultResourceID": "[concat(subscription().id,'/resourceGroups/',variables('keyVaultResourceGroup'),'/providers/Microsoft.KeyVault/vaults/', variables('keyVaultName'))]",
+    "keyVaultName": "dinorskey",
+    "keyVaultResourceGroup": "sql1",
+    "keyEncryptionKeyURL": "https://dinorskey.vault.azure.net/keys/softkey/ee65e15d80414416b0923f9059124902",
+    "sequenceVersion": "1.7",
+      "pubipName": "pubip"
+
+  },
+"resources": [
+		{
+			"apiVersion": "2015-05-01-preview",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[concat('IaaS-EastUS-', parameters('envLevel'), '-vNet-NIC01-', parameters('vmName'))]",
+			"location": "[parameters('resourceLocation')]",
+			"properties": {
+				"ipConfigurations": [
+				{
+					"name": "ipconfig1",
+					"properties": {
+						"privateIPAllocationMethod": "Static",
+						"privateIPAddress": "[parameters('ipAddress')]",
+						"subnet": {
+							"id": "[variables('subnetRef')]"
+						},
+         "publicIPAddress": {
+             "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('pubipName'))]"
+         }
+					}
+				}
+				]
+			},
+      "dependsOn": [
+          "[concat('Microsoft.Network/publicIPAddresses/', variables('pubipName'))]"
+      ]
+		},
+		{
+			"name": "[parameters('vmName')]",
+			"type": "Microsoft.Compute/virtualMachines",
+			"location": "[parameters('resourceLocation')]",
+			"apiVersion": "2015-06-15",
+			"dependsOn": [
+				"[concat('Microsoft.Network/networkInterfaces/', concat('IaaS-EastUS-', parameters('envLevel'), '-vNet-NIC01-', parameters('vmName')))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[parameters('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('vmName')]",
+					"adminUsername": "[parameters('vmAdminUserName')]",
+					"adminPassword": "[parameters('vmAdminPassword')]"
+				},
+				"storageProfile": {
+					"osDisk": {
+						"name": "OSDisk",
+						"osType": "Windows",
+            "image": {
+              "uri": "https://favad.blob.core.windows.net/system/Microsoft.Compute/Images/vhds/dintwimage-osDisk.d0d5fd14-a0f3-4f2b-a37e-377ca4f806fc.vhd"
+            },
+						"vhd": {
+							"uri": "[concat('https://', parameters('storageAccountName'), '.blob.core.windows.net/vhds/', parameters('vmName'), '-osdisk.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					},
+					"dataDisks": "[take(variables('diskArray'),parameters('numDataDisk'))]"
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+					{
+					  "id": "[resourceId('Microsoft.Network/networkInterfaces', concat('IaaS-EastUS-', parameters('envLevel'), '-vNet-NIC01-', parameters('vmName')))]"
+					}
+					]
+				},
+				
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('storageAccountName'),'.blob.core.windows.net')]"
+					}
+				}
+			},
+				
+			"resources": [
+				
+			]
+		},
+  {
+    "type": "Microsoft.Compute/virtualMachines/extensions",
+    "name": "[concat(parameters('vmName'),'/AzureDiskEncryption')]",
+    "apiVersion": "2016-03-30",
+    "location": "[resourceGroup().location]",
+    "dependsOn": [
+      "[concat('Microsoft.Compute/virtualMachines/', parameters('vmName'))]"
+    ],
+    "properties": {
+      "publisher": "Microsoft.Azure.Security",
+      "type": "AzureDiskEncryption",
+      "typeHandlerVersion": "[variables('extensionVersion')]",
+      "autoUpgradeMinorVersion": true,
+      "forceUpdateTag": "[variables('sequenceVersion')]",
+      "settings": {
+        "AADClientID": "f0e3b718-fb05-46a2-9f99-d2beebe72f2b",
+        "KeyVaultURL": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]",
+        "KeyEncryptionKeyURL": "[variables('keyEncryptionKeyURL')]",
+        "KeyEncryptionAlgorithm": "RSA-OAEP",
+        "VolumeType": "All",
+        "EncryptionOperation": "EnableEncryption"
+      },
+      "protectedSettings": {
+        "AADClientSecret": "[parameters('aadClientSecret')]"
+      }
+    }
+  },
+
+		{
+		  "name": "updatevm",
+		  "type": "Microsoft.Resources/deployments",
+		  "apiVersion": "2015-01-01",
+		  "dependsOn": [
+			"[resourceId('Microsoft.Compute/virtualMachines/extensions/',  parameters('vmName'), 'AzureDiskEncryption')]"
+		  ],
+		  "properties": {
+			"mode": "Incremental",
+			"templateLink": {
+			  "uri": "[parameters('updateVmUrl')]",
+			  "contentVersion": "1.0.0.0"
+			},
+			"parameters": {
+			  "vmName": {
+				"value": "[parameters('vmName')]"
+			  },
+			  "keyVaultResourceID": {
+				"value": "[variables('keyVaultResourceID')]"
+			  },
+        "keyVaultSecretUrl": {
+          "value": "https://dinorskey.vault.azure.net/secrets/1092A07D-3CC1-45C7-94E6-BC9C1999536B/9081413084c44fab9be7eb6a650ecc0e"
+        },
+			  "keyEncryptionKeyURL": {
+				"value": "[variables('keyEncryptionKeyURL')]"
+			  }
+			}
+		  }
+		},
+    {
+        "name": "[variables('pubipName')]",
+        "type": "Microsoft.Network/publicIPAddresses",
+        "location": "[parameters('resourceLocation')]",
+        "apiVersion": "2015-06-15",
+        "dependsOn": [ ],
+        "tags": {
+            "displayName": "pubip"
+        },
+        "properties": {
+            "publicIPAllocationMethod": "Dynamic",
+            "dnsSettings": {
+                "domainNameLabel": "[parameters('pubipDnsName')]"
+            }
+        }
+    }
+	],
+  "outputs": {
+  }
+}
